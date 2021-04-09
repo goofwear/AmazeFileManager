@@ -43,9 +43,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.text.HtmlCompat
 import androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT
 import androidx.fragment.app.Fragment
-import com.afollestad.materialdialogs.DialogAction
 import com.afollestad.materialdialogs.MaterialDialog
-import com.afollestad.materialdialogs.folderselector.FolderChooserDialog
+import com.afollestad.materialdialogs.WhichButton
+import com.afollestad.materialdialogs.actions.getActionButton
+import com.afollestad.materialdialogs.customview.customView
+import com.afollestad.materialdialogs.files.folderChooser
+import com.afollestad.materialdialogs.input.input
 import com.amaze.filemanager.R
 import com.amaze.filemanager.application.AppConfig
 import com.amaze.filemanager.asynchronous.services.ftp.FtpService
@@ -68,6 +71,7 @@ import com.google.android.material.snackbar.Snackbar
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
+import java.io.File
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.util.*
@@ -192,17 +196,14 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
         when (item.itemId) {
             R.id.choose_ftp_port -> {
                 val currentFtpPort = defaultPortFromPreferences
-                MaterialDialog.Builder(requireContext())
-                    .input(
-                        getString(R.string.ftp_port_edit_menu_title),
-                        currentFtpPort.toString(),
-                        true
-                    ) { _: MaterialDialog?, _: CharSequence? -> }
-                    .inputType(InputType.TYPE_CLASS_NUMBER)
-                    .onPositive { dialog: MaterialDialog, which: DialogAction? ->
-                        val editText = dialog.inputEditText
-                        if (editText != null) {
-                            val name = editText.text.toString()
+                MaterialDialog(requireContext()).show {
+                    input(
+                        hintRes = R.string.ftp_port_edit_menu_title,
+                        prefill = currentFtpPort.toString(),
+                        inputType = InputType.TYPE_CLASS_NUMBER,
+                        waitForPositiveButton = true,
+                        callback = { _, input ->
+                            val name = input.toString()
                             val portNumber = name.toInt()
                             if (portNumber < 1024) {
                                 Toast.makeText(
@@ -219,58 +220,94 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
                                     .show()
                             }
                         }
-                    }
-                    .positiveText(getString(R.string.change).toUpperCase())
-                    .negativeText(R.string.cancel)
-                    .build()
-                    .show()
+                    )
+                    positiveButton(text = getString(R.string.change).toUpperCase())
+                    negativeButton(res = R.string.cancel)
+                    getActionButton(WhichButton.POSITIVE).setTextColor(accentColor)
+                    getActionButton(WhichButton.NEGATIVE).setTextColor(accentColor)
+                    // TextWatcher for port number was deliberately removed. It didn't work anyway, so
+                    // no reason to keep here. Pending reimplementation when material-dialogs lib is
+                    // upgraded.
+                }
                 return true
             }
             R.id.ftp_path -> {
                 if (Build.VERSION.SDK_INT >= M) {
                     activityResultHandler.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
                 } else {
-                    val dialogBuilder = FolderChooserDialog.Builder(requireActivity())
-                    dialogBuilder
-                        .chooseButton(R.string.choose_folder)
-                        .initialPath(defaultPathFromPreferences)
-                        .goUpLabel(getString(R.string.folder_go_up_one_level))
-                        .cancelButton(R.string.cancel)
-                        .tag(TAG)
-                        .build()
-                        .show(activity)
+                    MaterialDialog(requireActivity()).show {
+                        folderChooser(
+                            context = requireContext(),
+                            initialDirectory = File(defaultPathFromPreferences),
+                            selection = { _, folder ->
+                                if (folder.exists() && folder.isDirectory()) {
+                                    changeFTPServerPath(folder.getPath())
+                                    Toast.makeText(
+                                        requireContext(),
+                                        R.string.ftp_path_change_success,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                } else {
+                                    // try to get parent
+                                    folder.parentFile?.let { parentFolder ->
+                                        if (parentFolder.exists() && parentFolder.isDirectory) {
+                                            changeFTPServerPath(parentFolder.path)
+                                            Toast.makeText(
+                                                requireContext(),
+                                                R.string.ftp_path_change_success,
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } else {
+                                            // don't have access, print error
+                                            Toast.makeText(
+                                                requireContext(),
+                                                R.string.ftp_path_change_error_invalid,
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        positiveButton(res = R.string.choose_folder)
+                        negativeButton(res = R.string.cancel)
+                        getActionButton(WhichButton.POSITIVE).setTextColor(accentColor)
+                        getActionButton(WhichButton.NEGATIVE).setTextColor(accentColor)
+                    }
                 }
 
                 return true
             }
             R.id.ftp_login -> {
-                val loginDialogBuilder = MaterialDialog.Builder(requireContext())
-                val loginDialogView =
-                    DialogFtpLoginBinding.inflate(LayoutInflater.from(requireContext())).apply {
-                        initLoginDialogViews(this)
-                        loginDialogBuilder.onPositive { dialog: MaterialDialog, _: DialogAction ->
-                            if (checkboxFtpAnonymous.isChecked) {
+                MaterialDialog(requireContext()).show {
+                    val loginDialogView =
+                        DialogFtpLoginBinding.inflate(LayoutInflater.from(requireContext())).also {
+                            initLoginDialogViews(it)
+                        }
+                    customView(view = loginDialogView.root, dialogWrapContent = true)
+                    positiveButton(
+                        text = getString(R.string.set).toUpperCase(),
+                        click = {
+                            if (loginDialogView.checkboxFtpAnonymous.isChecked) {
                                 // remove preferences
                                 setFTPUsername("")
                                 setFTPPassword("")
                             } else {
                                 // password and username field not empty, let's set them to preferences
-                                setFTPUsername(editTextDialogFtpUsername.text.toString())
-                                setFTPPassword(editTextDialogFtpPassword.text.toString())
+                                setFTPUsername(
+                                    loginDialogView.editTextDialogFtpUsername.text.toString()
+                                )
+                                setFTPPassword(
+                                    loginDialogView.editTextDialogFtpPassword.text.toString()
+                                )
                             }
                         }
-                    }
-                val dialog = loginDialogBuilder.customView(loginDialogView.root, true)
-                    .title(getString(R.string.ftp_login))
-                    .positiveText(getString(R.string.set).toUpperCase())
-                    .negativeText(getString(R.string.cancel))
-                    .build()
-
-                // TextWatcher for port number was deliberately removed. It didn't work anyway, so
-                // no reason to keep here. Pending reimplementation when material-dialogs lib is
-                // upgraded.
-
-                dialog.show()
+                    )
+                    negativeButton(R.string.cancel)
+                    title(R.string.ftp_login)
+                    getActionButton(WhichButton.POSITIVE).setTextColor(accentColor)
+                    getActionButton(WhichButton.NEGATIVE).setTextColor(accentColor)
+                }
                 return true
             }
             R.id.checkbox_ftp_readonly -> {
@@ -289,40 +326,39 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
                 return true
             }
             R.id.ftp_timeout -> {
-                val timeoutBuilder = MaterialDialog.Builder(requireActivity())
-                timeoutBuilder.title(
-                    getString(R.string.ftp_timeout) +
-                        " (" +
-                        resources.getString(R.string.ftp_seconds) +
-                        ")"
-                )
-                timeoutBuilder.input(
-                    (
-                        FtpService.DEFAULT_TIMEOUT.toString() +
+                MaterialDialog(requireActivity()).show {
+                    title(
+                        text =
+                            resources.getString(R.string.ftp_timeout) +
+                                " (" +
+                                resources.getString(R.string.ftp_seconds) +
+                                ")"
+                    )
+                    input(
+                        hint = FtpService.DEFAULT_TIMEOUT.toString() +
                             " " +
-                            resources.getString(R.string.ftp_seconds)
-                        ),
-                    ftpTimeout.toString(),
-                    true
-                ) { _: MaterialDialog?, input: CharSequence ->
-                    val isInputInteger: Boolean = try {
-                        // try parsing for integer check
-                        input.toString().toInt()
-                        true
-                    } catch (e: NumberFormatException) {
-                        false
-                    }
-                    ftpTimeout = if (input.isEmpty() || !isInputInteger) {
-                        FtpService.DEFAULT_TIMEOUT
-                    } else {
-                        Integer.valueOf(input.toString())
-                    }
+                            resources.getString(R.string.ftp_seconds),
+                        prefill = ftpTimeout.toString(),
+                        inputType = InputType.TYPE_CLASS_NUMBER,
+                        allowEmpty = true,
+                        callback = { _, input ->
+                            val isInputInteger: Boolean = try {
+                                // try parsing for integer check
+                                input.toString().toInt()
+                                true
+                            } catch (e: NumberFormatException) {
+                                false
+                            }
+                            ftpTimeout = if (input.isEmpty() || !isInputInteger) {
+                                FtpService.DEFAULT_TIMEOUT
+                            } else {
+                                Integer.valueOf(input.toString())
+                            }
+                        }
+                    )
+                    positiveButton(text = resources.getString(R.string.set).toUpperCase())
+                    negativeButton(res = R.string.cancel)
                 }
-                timeoutBuilder
-                    .positiveText(resources.getString(R.string.set).toUpperCase())
-                    .negativeText(resources.getString(R.string.cancel))
-                    .build()
-                    .show()
                 return true
             }
         }

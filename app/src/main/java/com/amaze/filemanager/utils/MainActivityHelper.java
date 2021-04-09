@@ -34,7 +34,11 @@ import java.io.File;
 import java.util.ArrayList;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.afollestad.materialdialogs.WhichButton;
+import com.afollestad.materialdialogs.actions.DialogActionExtKt;
+import com.afollestad.materialdialogs.customview.DialogCustomViewExtKt;
 import com.amaze.filemanager.R;
+import com.amaze.filemanager.application.AppConfig;
 import com.amaze.filemanager.asynchronous.asynctasks.DeleteTask;
 import com.amaze.filemanager.asynchronous.management.ServiceWatcherUtil;
 import com.amaze.filemanager.asynchronous.services.ZipService;
@@ -70,7 +74,6 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -80,6 +83,9 @@ import android.widget.Toast;
 import androidx.annotation.StringRes;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
+
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
 
 /** Created by root on 11/22/15, modified by Emmanuel Messulam<emmanuelbendavid@gmail.com> */
 public class MainActivityHelper {
@@ -102,19 +108,26 @@ public class MainActivityHelper {
 
   public void showFailedOperationDialog(
       ArrayList<HybridFileParcelable> failedOps, Context context) {
-    MaterialDialog.Builder mat = new MaterialDialog.Builder(context);
-    mat.title(context.getString(R.string.operation_unsuccesful));
-    mat.theme(mainActivity.getAppTheme().getMaterialDialogTheme());
-    mat.positiveColor(accentColor);
-    mat.positiveText(R.string.cancel);
-    String content = context.getString(R.string.operation_fail_following);
-    int k = 1;
-    for (HybridFileParcelable s : failedOps) {
-      content = content + "\n" + (k) + ". " + s.getName(context);
-      k++;
-    }
-    mat.content(content);
-    mat.build().show();
+    new MaterialDialog(context, MaterialDialog.getDEFAULT_BEHAVIOR())
+        .show(
+            dialog -> {
+              dialog.setTitle(R.string.operation_unsuccesful);
+              dialog.positiveButton(
+                  R.string.cancel,
+                  null,
+                  dialog1 -> {
+                    dialog1.dismiss();
+                    return null;
+                  });
+              String content = context.getString(R.string.operation_fail_following);
+              int k = 1;
+              for (HybridFileParcelable s : failedOps) {
+                content = content + "\n" + (k) + ". " + s.getName(context);
+                k++;
+              }
+              dialog.message(-1, content, null);
+              return null;
+            });
   }
 
   public final BroadcastReceiver mNotificationReceiver =
@@ -152,8 +165,9 @@ public class MainActivityHelper {
     mk(
         R.string.newfolder,
         "",
-        (dialog, which) -> {
-          EditText textfield = dialog.getCustomView().findViewById(R.id.singleedittext_input);
+        (dialog) -> {
+          EditText textfield =
+              DialogCustomViewExtKt.getCustomView(dialog).findViewById(R.id.singleedittext_input);
           mkDir(
               new HybridFile(
                   openMode,
@@ -164,6 +178,7 @@ public class MainActivityHelper {
                       .toString()),
               ma);
           dialog.dismiss();
+          return null;
         },
         (text) -> {
           boolean isValidFilename = FileUtil.isValidFilename(text);
@@ -190,8 +205,9 @@ public class MainActivityHelper {
     mk(
         R.string.newfile,
         AppConstants.NEW_FILE_DELIMITER.concat(AppConstants.NEW_FILE_EXTENSION_TXT),
-        (dialog, which) -> {
-          EditText textfield = dialog.getCustomView().findViewById(R.id.singleedittext_input);
+        (dialog) -> {
+          EditText textfield =
+              DialogCustomViewExtKt.getCustomView(dialog).findViewById(R.id.singleedittext_input);
           mkFile(
               new HybridFile(
                   openMode,
@@ -202,6 +218,7 @@ public class MainActivityHelper {
                       .toString()),
               ma);
           dialog.dismiss();
+          return null;
         },
         (text) -> {
           boolean isValidFilename = FileUtil.isValidFilename(text);
@@ -239,10 +256,9 @@ public class MainActivityHelper {
   private void mk(
       @StringRes int newText,
       String prefill,
-      final MaterialDialog.SingleButtonCallback onPositiveAction,
+      final Function1<MaterialDialog, Unit> onPositiveAction,
       final WarnableTextInputValidator.OnTextValidate validator) {
-    MaterialDialog dialog =
-        GeneralDialogCreation.showNameDialog(
+    GeneralDialogCreation.showNameDialog(
             mainActivity,
             mainActivity.getResources().getString(R.string.entername),
             prefill,
@@ -251,15 +267,15 @@ public class MainActivityHelper {
             mainActivity.getResources().getString(R.string.cancel),
             null,
             onPositiveAction,
-            validator);
-    dialog.show();
+            validator)
+        .show();
 
-    // place cursor at the beginning
-    EditText textfield = dialog.getCustomView().findViewById(R.id.singleedittext_input);
-    textfield.post(
-        () -> {
-          textfield.setSelection(0);
-        });
+    //    // place cursor at the beginning
+    //    EditText textfield = dialog.getCustomView().findViewById(R.id.singleedittext_input);
+    //    textfield.post(
+    //        () -> {
+    //          textfield.setSelection(0);
+    //        });
   }
 
   public String getIntegralNames(String path) {
@@ -295,30 +311,40 @@ public class MainActivityHelper {
   }
 
   public void guideDialogForLEXA(String path, int requestCode) {
-    final MaterialDialog.Builder x = new MaterialDialog.Builder(mainActivity);
-    x.theme(mainActivity.getAppTheme().getMaterialDialogTheme());
-    x.title(R.string.needs_access);
-    LayoutInflater layoutInflater =
-        (LayoutInflater) mainActivity.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-    View view = layoutInflater.inflate(R.layout.lexadrawer, null);
-    x.customView(view, true);
-    // textView
-    TextView textView = view.findViewById(R.id.description);
-    textView.setText(
-        mainActivity.getString(R.string.needs_access_summary)
-            + path
-            + mainActivity.getString(R.string.needs_access_summary1));
-    ((ImageView) view.findViewById(R.id.icon)).setImageResource(R.drawable.sd_operate_step);
-    x.positiveText(R.string.open)
-        .negativeText(R.string.cancel)
-        .positiveColor(accentColor)
-        .negativeColor(accentColor)
-        .onPositive((dialog, which) -> triggerStorageAccessFramework(requestCode))
-        .onNegative(
-            (dialog, which) ->
-                Toast.makeText(mainActivity, R.string.error, Toast.LENGTH_SHORT).show());
-    final MaterialDialog y = x.build();
-    y.show();
+    new MaterialDialog(mainActivity, MaterialDialog.getDEFAULT_BEHAVIOR())
+        .show(
+            dialog -> {
+              dialog.title(R.string.needs_access, null);
+              DialogCustomViewExtKt.customView(
+                  dialog, R.layout.lexadrawer, null, false, false, false, false);
+              View view = DialogCustomViewExtKt.getCustomView(dialog);
+              TextView textView = view.findViewById(R.id.description);
+              textView.setText(
+                  mainActivity.getString(R.string.needs_access_summary)
+                      + path
+                      + mainActivity.getString(R.string.needs_access_summary1));
+              ((ImageView) view.findViewById(R.id.icon))
+                  .setImageResource(R.drawable.sd_operate_step);
+              dialog.positiveButton(
+                  R.string.open,
+                  null,
+                  dialog1 -> {
+                    triggerStorageAccessFramework(requestCode);
+                    return null;
+                  });
+              dialog.negativeButton(
+                  R.string.cancel,
+                  null,
+                  dialog1 -> {
+                    AppConfig.toast(mainActivity, R.string.error);
+                    return null;
+                  });
+              DialogActionExtKt.getActionButton(dialog, WhichButton.POSITIVE)
+                  .setTextColor(accentColor);
+              DialogActionExtKt.getActionButton(dialog, WhichButton.NEGATIVE)
+                  .setTextColor(accentColor);
+              return null;
+            });
   }
 
   private void triggerStorageAccessFramework(int requestCode) {

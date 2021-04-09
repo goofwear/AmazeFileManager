@@ -22,9 +22,6 @@ package com.amaze.filemanager.ui.activities;
 
 import static android.os.Build.VERSION.SDK_INT;
 
-import java.io.File;
-
-import com.afollestad.materialdialogs.folderselector.FolderChooserDialog;
 import com.amaze.filemanager.R;
 import com.amaze.filemanager.ui.activities.superclasses.ThemedActivity;
 import com.amaze.filemanager.ui.colors.ColorPreferenceHelper;
@@ -43,14 +40,12 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.FragmentTransaction;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.preference.PreferenceFragment;
-import android.preference.PreferenceManager;
 import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -58,12 +53,10 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 import androidx.annotation.ColorInt;
-import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 import androidx.appcompat.widget.Toolbar;
 
-public class PreferencesActivity extends ThemedActivity
-    implements FolderChooserDialog.FolderCallback {
+public class PreferencesActivity extends ThemedActivity {
 
   // Start is the first activity you see
   public static final int START_PREFERENCE = 0;
@@ -295,35 +288,35 @@ public class PreferencesActivity extends ThemedActivity
     getSupportActionBar().setTitle(titleBarName);
   }
 
-  /**
-   * Update preference key with selected path.
-   *
-   * @see PrefFrag
-   * @see FolderChooserDialog
-   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
-   * @param dialog
-   * @param folder selected folder
-   */
-  @Override
-  public void onFolderSelection(@NonNull FolderChooserDialog dialog, @NonNull File folder) {
-    // Just to be safe
-    if (folder.exists() && folder.isDirectory()) {
-      // Write settings to preferences
-      SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
-      sharedPref.edit().putString(dialog.getTag(), folder.getAbsolutePath()).commit();
-    }
-    dialog.dismiss();
-  }
-
-  /**
-   * Do nothing other than dismissing the folder selection dialog.
-   *
-   * @see FolderChooserDialog
-   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
-   * @param dialog
-   */
-  @Override
-  public void onFolderChooserDismissed(@NonNull FolderChooserDialog dialog) {
-    dialog.dismiss();
-  }
+  //  /**
+  //   * Update preference key with selected path.
+  //   *
+  //   * @see PrefFrag
+  //   * @see FolderChooserDialog
+  //   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
+  //   * @param dialog
+  //   * @param folder selected folder
+  //   */
+  //  @Override
+  //  public void onFolderSelection(@NonNull FolderChooserDialog dialog, @NonNull File folder) {
+  //    // Just to be safe
+  //    if (folder.exists() && folder.isDirectory()) {
+  //      // Write settings to preferences
+  //      SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+  //      sharedPref.edit().putString(dialog.getTag(), folder.getAbsolutePath()).commit();
+  //    }
+  //    dialog.dismiss();
+  //  }
+  //
+  //  /**
+  //   * Do nothing other than dismissing the folder selection dialog.
+  //   *
+  //   * @see FolderChooserDialog
+  //   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
+  //   * @param dialog
+  //   */
+  //  @Override
+  //  public void onFolderChooserDismissed(@NonNull FolderChooserDialog dialog) {
+  //    dialog.dismiss();
+  //  }
 }

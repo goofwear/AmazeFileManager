@@ -36,8 +36,10 @@ import android.view.LayoutInflater
 import android.view.View
 import androidx.core.text.isDigitsOnly
 import androidx.fragment.app.DialogFragment
-import com.afollestad.materialdialogs.DialogAction
 import com.afollestad.materialdialogs.MaterialDialog
+import com.afollestad.materialdialogs.WhichButton
+import com.afollestad.materialdialogs.actions.getActionButton
+import com.afollestad.materialdialogs.customview.customView
 import com.amaze.filemanager.R
 import com.amaze.filemanager.application.AppConfig
 import com.amaze.filemanager.asynchronous.asynctasks.AsyncTaskResult
@@ -121,224 +123,230 @@ class SftpConnectDialog : DialogFragment() {
         }
 
         // Define action for buttons
-        val dialogBuilder = MaterialDialog.Builder(ctx!!.get()!!)
-            .title(R.string.scp_connection)
-            .autoDismiss(false)
-            .customView(binding.root, true)
-            .theme(utilsProvider.appTheme.materialDialogTheme)
-            .negativeText(R.string.cancel)
-            .positiveText(if (edit) R.string.update else R.string.create)
-            .positiveColor(accentColor)
-            .negativeColor(accentColor)
-            .neutralColor(accentColor)
-            .onPositive { _: MaterialDialog, _: DialogAction ->
-                val connectionName = binding.connectionET.text.toString()
-                val hostname = binding.ipET.text.toString()
-                val port = binding.portET.text.toString().toInt()
-                val defaultPath = binding.defaultPathET.text.toString()
-                val username = binding.usernameET.text.toString()
-                val password = if (binding.passwordET.text!!.isEmpty()) {
-                    arguments!!.getString(ARG_PASSWORD, null)
-                } else {
-                    binding.passwordET.text.toString()
-                }
-
-                // Get original SSH host key
-                utilsHandler!!.getSshHostKey(
-                    SshClientUtils.deriveSftpPathFrom(
-                        hostname,
-                        port,
-                        defaultPath,
-                        username,
-                        arguments!!.getString(ARG_PASSWORD, null),
-                        selectedParsedKeyPair
-                    )
-                )?.let { sshHostKey ->
-                    SshConnectionPool.getInstance()
-                        .removeConnection(
-                            SshClientUtils.deriveSftpPathFrom(
-                                hostname,
-                                port,
-                                defaultPath,
-                                username,
-                                password,
-                                selectedParsedKeyPair
-                            )
-                        ) {
-                            GetSshHostFingerprintTask(hostname, port) {
-                                taskResult: AsyncTaskResult<PublicKey?> ->
-                                taskResult.result?.let { hostKey ->
-                                    val hostKeyFingerprint = SecurityUtils.getFingerprint(hostKey)
-                                    if (hostKeyFingerprint == sshHostKey) {
-                                        authenticateAndSaveSetup(
-                                            connectionName,
-                                            hostname,
-                                            port,
-                                            defaultPath,
-                                            sshHostKey,
-                                            username,
-                                            password,
-                                            selectedParsedKeyPair,
-                                            edit
-                                        )
-                                    } else {
-                                        AlertDialog.Builder(ctx!!.get())
-                                            .setTitle(
-                                                R.string.ssh_connect_failed_host_key_changed_title
-                                            ).setMessage(
-                                                R.string.ssh_connect_failed_host_key_changed_prompt
-                                            ).setPositiveButton(
-                                                R.string.update_host_key
-                                            ) { _: DialogInterface?, _: Int ->
-                                                authenticateAndSaveSetup(
-                                                    connectionName,
-                                                    hostname,
-                                                    port,
-                                                    defaultPath,
-                                                    hostKeyFingerprint,
-                                                    username,
-                                                    password,
-                                                    selectedParsedKeyPair,
-                                                    edit
-                                                )
-                                            }.setNegativeButton(R.string.cancel_recommended) {
-                                                dialog1: DialogInterface, _: Int ->
-                                                dialog1.dismiss()
-                                            }.show()
-                                    }
-                                }
-                            }.execute()
-                        }
-                } ?: run {
-                    GetSshHostFingerprintTask(
-                        hostname,
-                        port
-                    ) { taskResult: AsyncTaskResult<PublicKey?> ->
-                        taskResult.result?.run {
-                            val hostKeyFingerprint = SecurityUtils.getFingerprint(this)
-                            val hostAndPort = StringBuilder(hostname).also {
-                                if (port != SshConnectionPool.SSH_DEFAULT_PORT && port > 0) {
-                                    it.append(':').append(port)
-                                }
-                            }.toString()
-                            AlertDialog.Builder(ctx!!.get())
-                                .setTitle(R.string.ssh_host_key_verification_prompt_title)
-                                .setMessage(
-                                    getString(
-                                        R.string.ssh_host_key_verification_prompt,
-                                        hostAndPort,
-                                        algorithm,
-                                        hostKeyFingerprint
-                                    )
-                                ).setCancelable(true)
-                                .setPositiveButton(R.string.yes) {
-                                    dialog1: DialogInterface, _: Int ->
-                                    // This closes the host fingerprint verification dialog
-                                    dialog1.dismiss()
-                                    if (authenticateAndSaveSetup(
-                                            connectionName,
-                                            hostname,
-                                            port,
-                                            defaultPath,
-                                            hostKeyFingerprint,
-                                            username,
-                                            password,
-                                            selectedParsedKeyPair,
-                                            edit
-                                        )
-                                    ) {
-                                        dialog1.dismiss()
-                                        Log.d(TAG, "Saved setup")
-                                        dismiss()
-                                    }
-                                }.setNegativeButton(R.string.no) {
-                                    dialog1: DialogInterface, _: Int ->
-                                    dialog1.dismiss()
-                                }.show()
-                        }
-                    }.execute()
-                }
-            }.onNegative { dialog: MaterialDialog, _: DialogAction? ->
-                dialog.dismiss()
-            }
-
-        // If we are editing connection settings, give new actions for neutral and negative buttons
-        if (edit) {
-            dialogBuilder
-                .negativeText(R.string.delete)
-                .onNegative { dialog: MaterialDialog, _: DialogAction? ->
+        return MaterialDialog(ctx!!.get()!!).show {
+            title(R.string.scp_connection)
+            customView(view = binding.root, scrollable = true)
+            noAutoDismiss()
+            negativeButton(R.string.cancel, click = { dialog -> dialog.dismiss() })
+            positiveButton(
+                if (edit) R.string.update else R.string.create,
+                click = {
                     val connectionName = binding.connectionET.text.toString()
                     val hostname = binding.ipET.text.toString()
                     val port = binding.portET.text.toString().toInt()
                     val defaultPath = binding.defaultPathET.text.toString()
                     val username = binding.usernameET.text.toString()
-                    val path = SshClientUtils.deriveSftpPathFrom(
-                        hostname,
-                        port,
-                        defaultPath,
-                        username,
-                        arguments!!.getString(ARG_PASSWORD, null),
-                        selectedParsedKeyPair
-                    )
-                    val i = DataUtils.getInstance().containsServer(arrayOf(connectionName, path))
-                    if (i > -1) {
-                        DataUtils.getInstance().removeServer(i)
-                        AppConfig.getInstance()
-                            .runInBackground {
-                                utilsHandler!!.removeFromDatabase(
-                                    OperationData(
-                                        UtilsHandler.Operation.SFTP,
-                                        path,
-                                        connectionName,
-                                        null,
-                                        null,
-                                        null
-                                    )
-                                )
-                            }
-                        (activity as MainActivity).drawer.refreshDrawer()
-                    }
-                    dialog.dismiss()
-                }.neutralText(R.string.cancel)
-                .onNeutral { dialog: MaterialDialog, _: DialogAction? -> dialog.dismiss() }
-        }
-        val dialog = dialogBuilder.build()
-
-        // Some validations to make sure the Create/Update button is clickable only when required
-        // setting values are given
-        val okBTN: View = dialog.getActionButton(DialogAction.POSITIVE)
-        if (!edit) okBTN.isEnabled = false
-        val validator: TextWatcher = object : SimpleTextWatcher() {
-            override fun afterTextChanged(s: Editable) {
-                val portETValue = binding.portET.text.toString()
-                val port = if (portETValue.isDigitsOnly() && (portETValue.length in 1..5)) {
-                    portETValue.toInt()
-                } else {
-                    -1
-                }
-                val hasCredential = if (edit) {
-                    if (binding.passwordET.text!!.isNotEmpty() ||
-                        !TextUtils.isEmpty(arguments!!.getString(ARG_PASSWORD))
-                    ) {
-                        true
+                    val password = if (binding.passwordET.text!!.isEmpty()) {
+                        arguments!!.getString(ARG_PASSWORD, null)
                     } else {
-                        selectedParsedKeyPairName!!.isNotEmpty()
+                        binding.passwordET.text.toString()
                     }
-                } else {
-                    binding.passwordET.text!!.isNotEmpty() || selectedParsedKeyPair != null
+
+                    // Get original SSH host key
+                    utilsHandler!!.getSshHostKey(
+                        SshClientUtils.deriveSftpPathFrom(
+                            hostname,
+                            port,
+                            defaultPath,
+                            username,
+                            arguments!!.getString(ARG_PASSWORD, null),
+                            selectedParsedKeyPair
+                        )
+                    )?.let { sshHostKey ->
+                        SshConnectionPool.getInstance()
+                            .removeConnection(
+                                SshClientUtils.deriveSftpPathFrom(
+                                    hostname,
+                                    port,
+                                    defaultPath,
+                                    username,
+                                    password,
+                                    selectedParsedKeyPair
+                                )
+                            ) {
+                                GetSshHostFingerprintTask(hostname, port) {
+                                    taskResult: AsyncTaskResult<PublicKey?> ->
+                                    taskResult.result?.let { hostKey ->
+                                        val hostKeyFingerprint =
+                                            SecurityUtils.getFingerprint(hostKey)
+                                        if (hostKeyFingerprint == sshHostKey) {
+                                            authenticateAndSaveSetup(
+                                                connectionName,
+                                                hostname,
+                                                port,
+                                                defaultPath,
+                                                sshHostKey,
+                                                username,
+                                                password,
+                                                selectedParsedKeyPair,
+                                                edit
+                                            )
+                                        } else {
+                                            AlertDialog.Builder(ctx!!.get())
+                                                .setTitle(
+                                                    R
+                                                        .string
+                                                        .ssh_connect_failed_host_key_changed_title
+                                                ).setMessage(
+                                                    R
+                                                        .string
+                                                        .ssh_connect_failed_host_key_changed_prompt
+                                                ).setPositiveButton(
+                                                    R.string.update_host_key
+                                                ) { _: DialogInterface?, _: Int ->
+                                                    authenticateAndSaveSetup(
+                                                        connectionName,
+                                                        hostname,
+                                                        port,
+                                                        defaultPath,
+                                                        hostKeyFingerprint,
+                                                        username,
+                                                        password,
+                                                        selectedParsedKeyPair,
+                                                        edit
+                                                    )
+                                                }.setNegativeButton(R.string.cancel_recommended) {
+                                                    dialog1: DialogInterface, _: Int ->
+                                                    dialog1.dismiss()
+                                                }.show()
+                                        }
+                                    }
+                                }.execute()
+                            }
+                    } ?: run {
+                        GetSshHostFingerprintTask(
+                            hostname,
+                            port
+                        ) { taskResult: AsyncTaskResult<PublicKey?> ->
+                            taskResult.result?.run {
+                                val hostKeyFingerprint = SecurityUtils.getFingerprint(this)
+                                val hostAndPort = StringBuilder(hostname).also {
+                                    if (port != SshConnectionPool.SSH_DEFAULT_PORT && port > 0) {
+                                        it.append(':').append(port)
+                                    }
+                                }.toString()
+                                AlertDialog.Builder(ctx!!.get())
+                                    .setTitle(R.string.ssh_host_key_verification_prompt_title)
+                                    .setMessage(
+                                        getString(
+                                            R.string.ssh_host_key_verification_prompt,
+                                            hostAndPort,
+                                            algorithm,
+                                            hostKeyFingerprint
+                                        )
+                                    ).setCancelable(true)
+                                    .setPositiveButton(R.string.yes) {
+                                        dialog1: DialogInterface, _: Int ->
+                                        // This closes the host fingerprint verification dialog
+                                        dialog1.dismiss()
+                                        if (authenticateAndSaveSetup(
+                                                connectionName,
+                                                hostname,
+                                                port,
+                                                defaultPath,
+                                                hostKeyFingerprint,
+                                                username,
+                                                password,
+                                                selectedParsedKeyPair,
+                                                edit
+                                            )
+                                        ) {
+                                            dialog1.dismiss()
+                                            Log.d(TAG, "Saved setup")
+                                            dismiss()
+                                        }
+                                    }.setNegativeButton(R.string.no) {
+                                        dialog1: DialogInterface, _: Int ->
+                                        dialog1.dismiss()
+                                    }.show()
+                            }
+                        }.execute()
+                    }
                 }
-                okBTN.isEnabled = binding.connectionET.text!!.isNotEmpty() &&
-                    binding.ipET.text!!.isNotEmpty() &&
-                    port in VALID_PORT_RANGE &&
-                    binding.usernameET.text!!.isNotEmpty() &&
-                    hasCredential
+            )
+            // If we are editing connection settings,
+            // give new actions for neutral and negative buttons
+            if (edit) {
+                negativeButton(
+                    R.string.delete,
+                    click = { dialog ->
+                        val connectionName = binding.connectionET.text.toString()
+                        val hostname = binding.ipET.text.toString()
+                        val port = binding.portET.text.toString().toInt()
+                        val defaultPath = binding.defaultPathET.text.toString()
+                        val username = binding.usernameET.text.toString()
+                        val path = SshClientUtils.deriveSftpPathFrom(
+                            hostname,
+                            port,
+                            defaultPath,
+                            username,
+                            arguments!!.getString(ARG_PASSWORD, null),
+                            selectedParsedKeyPair
+                        )
+                        val i = DataUtils.getInstance().containsServer(
+                            arrayOf(
+                                connectionName,
+                                path
+                            )
+                        )
+                        if (i > -1) {
+                            DataUtils.getInstance().removeServer(i)
+                            AppConfig.getInstance()
+                                .runInBackground {
+                                    utilsHandler!!.removeFromDatabase(
+                                        OperationData(
+                                            UtilsHandler.Operation.SFTP,
+                                            path,
+                                            connectionName,
+                                            null,
+                                            null,
+                                            null
+                                        )
+                                    )
+                                }
+                            (activity as MainActivity).drawer.refreshDrawer()
+                        }
+                        dialog.dismiss()
+                    }
+                )
+                neutralButton(R.string.cancel, click = { dialog -> dialog.dismiss() })
             }
+
+            // Some validations to make sure the Create/Update button is clickable only when required
+            // setting values are given
+            val okBTN: View = getActionButton(WhichButton.POSITIVE)
+            if (!edit) okBTN.isEnabled = false
+            val validator: TextWatcher = object : SimpleTextWatcher() {
+                override fun afterTextChanged(s: Editable) {
+                    val portETValue = binding.portET.text.toString()
+                    val port = if (portETValue.isDigitsOnly() && (portETValue.length in 1..5)) {
+                        portETValue.toInt()
+                    } else {
+                        -1
+                    }
+                    val hasCredential = if (edit) {
+                        if (binding.passwordET.text!!.isNotEmpty() ||
+                            !TextUtils.isEmpty(arguments!!.getString(ARG_PASSWORD))
+                        ) {
+                            true
+                        } else {
+                            selectedParsedKeyPairName!!.isNotEmpty()
+                        }
+                    } else {
+                        binding.passwordET.text!!.isNotEmpty() || selectedParsedKeyPair != null
+                    }
+                    okBTN.isEnabled = binding.connectionET.text!!.isNotEmpty() &&
+                        binding.ipET.text!!.isNotEmpty() &&
+                        port in VALID_PORT_RANGE &&
+                        binding.usernameET.text!!.isNotEmpty() &&
+                        hasCredential
+                }
+            }
+            binding.ipET.addTextChangedListener(validator)
+            binding.portET.addTextChangedListener(validator)
+            binding.usernameET.addTextChangedListener(validator)
+            binding.passwordET.addTextChangedListener(validator)
         }
-        binding.ipET.addTextChangedListener(validator)
-        binding.portET.addTextChangedListener(validator)
-        binding.usernameET.addTextChangedListener(validator)
-        binding.passwordET.addTextChangedListener(validator)
-        return dialog
     }
 
     private fun initForm(edit: Boolean) = binding.run {
@@ -395,8 +403,7 @@ class SftpConnectDialog : DialogFragment() {
                                 selectedPem!!.lastPathSegment!!
                                     .indexOf('/') + 1
                             )
-                        val okBTN = (dialog as MaterialDialog)
-                            .getActionButton(DialogAction.POSITIVE)
+                        val okBTN = (dialog as MaterialDialog).getActionButton(WhichButton.POSITIVE)
                         okBTN.isEnabled = okBTN.isEnabled || true
                         binding.selectPemBTN.text = selectedParsedKeyPairName
                     }.execute()

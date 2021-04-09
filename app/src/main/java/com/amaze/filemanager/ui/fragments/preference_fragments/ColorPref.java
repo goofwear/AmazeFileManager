@@ -21,13 +21,14 @@
 package com.amaze.filemanager.ui.fragments.preference_fragments;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.afollestad.materialdialogs.Theme;
+import com.afollestad.materialdialogs.customview.DialogCustomViewExtKt;
 import com.amaze.filemanager.R;
 import com.amaze.filemanager.adapters.ColorAdapter;
 import com.amaze.filemanager.ui.activities.PreferencesActivity;
 import com.amaze.filemanager.ui.colors.ColorPreference;
 import com.amaze.filemanager.ui.colors.UserColorPreferences;
 import com.amaze.filemanager.ui.dialogs.ColorPickerDialog;
+import com.amaze.filemanager.ui.theme.AppTheme;
 import com.amaze.filemanager.ui.views.preference.InvalidablePreferenceCategory;
 
 import android.content.SharedPreferences;
@@ -197,28 +198,26 @@ public class ColorPref extends PreferenceFragment implements Preference.OnPrefer
 
       int fab_skin = activity.getAccent();
       dialog =
-          new MaterialDialog.Builder(getActivity())
-              .positiveText(R.string.cancel)
-              .title(R.string.choose_color)
-              .theme(activity.getAppTheme().getMaterialDialogTheme())
-              .autoDismiss(true)
-              .positiveColor(fab_skin)
-              .neutralColor(fab_skin)
-              .neutralText(R.string.default_string)
-              .callback(
-                  new MaterialDialog.ButtonCallback() {
-                    @Override
-                    public void onNeutral(MaterialDialog dialog) {
-                      super.onNeutral(dialog);
-                      if (activity != null) activity.setRestartActivity();
-                      activity
-                          .getColorPreference()
-                          .saveColorPreferences(sharedPref, userColorPreferences);
-                      invalidateEverything();
-                    }
-                  })
-              .customView(v, false)
-              .show();
+          new MaterialDialog(getActivity(), MaterialDialog.getDEFAULT_BEHAVIOR())
+              .show(
+                  dialog1 -> {
+                    DialogCustomViewExtKt.customView(dialog, null, v, false, false, false, false);
+                    dialog1.positiveButton(R.string.cancel, null, null);
+                    dialog1.setTitle(R.string.choose_color);
+                    dialog1.noAutoDismiss();
+                    dialog1.neutralButton(
+                        R.string.default_string,
+                        null,
+                        dialog2 -> {
+                          if (activity != null) activity.setRestartActivity();
+                          activity
+                              .getColorPreference()
+                              .saveColorPreferences(sharedPref, userColorPreferences);
+                          invalidateEverything();
+                          return null;
+                        });
+                    return null;
+                  });
     }
   }
 
@@ -326,7 +325,7 @@ public class ColorPref extends PreferenceFragment implements Preference.OnPrefer
           userColorPreferences.accent,
           userColorPreferences.iconSkin);
 
-      if (activity.getAppTheme().getMaterialDialogTheme() == Theme.LIGHT) {
+      if (activity.getAppTheme().getMaterialDialogTheme() == AppTheme.LIGHT) {
         selectedColors.setDividerColor(Color.WHITE);
       } else {
         selectedColors.setDividerColor(Color.BLACK);

@@ -20,7 +20,6 @@
 
 package com.amaze.filemanager.ui.dialogs;
 
-import com.afollestad.materialdialogs.Theme;
 import com.amaze.filemanager.R;
 import com.amaze.filemanager.ui.colors.ColorPreferenceHelper;
 import com.amaze.filemanager.ui.colors.UserColorPreferences;
@@ -35,7 +34,6 @@ import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
-import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcel;
@@ -183,8 +181,9 @@ public class ColorPickerDialog extends SelectedColorsPreference {
       ((TextView) child.findViewById(R.id.text)).setText(COLORS[i].first);
       CircularColorsView colorsView = child.findViewById(R.id.circularColorsView);
       colorsView.setColors(getColor(i, 0), getColor(i, 1), getColor(i, 2), getColor(i, 3));
-      if (appTheme.getMaterialDialogTheme() == Theme.LIGHT) colorsView.setDividerColor(Color.WHITE);
-      else colorsView.setDividerColor(Color.BLACK);
+      //      if (appTheme.getMaterialDialogTheme() == Theme.LIGHT)
+      // colorsView.setDividerColor(Color.WHITE);
+      //      else colorsView.setDividerColor(Color.BLACK);
       container.addView(child);
     }
     /*CUSTOM*/ {

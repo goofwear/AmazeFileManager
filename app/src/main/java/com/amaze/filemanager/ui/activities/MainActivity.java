@@ -52,9 +52,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import com.afollestad.materialdialogs.DialogAction;
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.afollestad.materialdialogs.folderselector.FolderChooserDialog;
+import com.afollestad.materialdialogs.list.DialogSingleChoiceExtKt;
 import com.amaze.filemanager.LogHelper;
 import com.amaze.filemanager.R;
 import com.amaze.filemanager.TagsHelper;
@@ -174,6 +173,9 @@ import io.reactivex.CompletableObserver;
 import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.schedulers.Schedulers;
+import kotlin.Unit;
+import kotlin.collections.CollectionsKt;
+import kotlin.jvm.functions.Function1;
 
 public class MainActivity extends PermissionsActivity
     implements SmbConnectionListener,
@@ -181,8 +183,7 @@ public class MainActivity extends PermissionsActivity
         BookmarkCallback,
         SearchWorkerFragment.HelperCallbacks,
         CloudConnectionCallbacks,
-        LoaderManager.LoaderCallbacks<Cursor>,
-        FolderChooserDialog.FolderCallback {
+        LoaderManager.LoaderCallbacks<Cursor> {
 
   private static final String TAG = TagsHelper.getTag(MainActivity.class);
 
@@ -1026,26 +1027,20 @@ public class MainActivity extends PermissionsActivity
                   dataUtils, getPrefs(), mainFragment, getAppTheme());
               break;
             case R.id.sethome:
-              if (mainFragment.openMode != OpenMode.FILE
-                  && mainFragment.openMode != OpenMode.ROOT) {
-                Toast.makeText(mainActivity, R.string.not_allowed, Toast.LENGTH_SHORT).show();
-                break;
-              }
               final MaterialDialog dialog =
                   GeneralDialogCreation.showBasicDialog(
                       mainActivity,
                       R.string.question_set_path_as_home,
                       R.string.set_as_home,
                       R.string.yes,
-                      R.string.no);
-              dialog
-                  .getActionButton(DialogAction.POSITIVE)
-                  .setOnClickListener(
+                      R.string.no,
                       (v) -> {
                         mainFragment.home = mainFragment.getCurrentPath();
                         updatePaths(mainFragment.no);
-                        dialog.dismiss();
-                      });
+                        v.dismiss();
+                        return null;
+                      },
+                      null);
               dialog.show();
               break;
             case R.id.exit:
@@ -1062,30 +1057,45 @@ public class MainActivity extends PermissionsActivity
               break;
             case R.id.dsort:
               String[] sort = getResources().getStringArray(R.array.directorysortmode);
-              MaterialDialog.Builder builder = new MaterialDialog.Builder(mainActivity);
-              builder.theme(getAppTheme().getMaterialDialogTheme());
-              builder.title(R.string.directorysort);
               int current =
                   Integer.parseInt(
                       getPrefs()
                           .getString(PreferencesConstants.PREFERENCE_DIRECTORY_SORT_MODE, "0"));
-
-              builder
-                  .items(sort)
-                  .itemsCallbackSingleChoice(
-                      current,
-                      (dialog1, view, which, text) -> {
-                        getPrefs()
-                            .edit()
-                            .putString(
-                                PreferencesConstants.PREFERENCE_DIRECTORY_SORT_MODE, "" + which)
-                            .commit();
-                        mainFragment.getSortModes();
-                        mainFragment.updateList();
-                        dialog1.dismiss();
-                        return true;
+              final MainFragment mainFrag = mainFragment;
+              new MaterialDialog(mainActivity, MaterialDialog.getDEFAULT_BEHAVIOR())
+                  .show(
+                      dialog1 -> {
+                        dialog1.title(R.string.directorysort, null);
+                        DialogSingleChoiceExtKt.listItemsSingleChoice(
+                            dialog1,
+                            null,
+                            CollectionsKt.arrayListOf(sort),
+                            null,
+                            current,
+                            true,
+                            (d, which, text) -> {
+                              getPrefs()
+                                  .edit()
+                                  .putString(
+                                      PreferencesConstants.PREFERENCE_DIRECTORY_SORT_MODE,
+                                      "" + which)
+                                  .apply();
+                              mainFrag.getSortModes();
+                              mainFrag.updateList();
+                              dialog1.dismiss();
+                              dialog1.positiveButton(
+                                  -1,
+                                  "",
+                                  new Function1<MaterialDialog, Unit>() {
+                                    @Override
+                                    public Unit invoke(MaterialDialog dialog) {
+                                      return null;
+                                    }
+                                  });
+                              return null;
+                            });
+                        return null;
                       });
-              builder.build().show();
               break;
             case R.id.hiddenitems:
               GeneralDialogCreation.showHiddenDialog(
@@ -2123,53 +2133,6 @@ public class MainActivity extends PermissionsActivity
       floatingActionButton.close(true);
       return true;
     }
-  }
-  /**
-   * Invoke {@link FtpServerFragment#changeFTPServerPath(String)} to change FTP server share path.
-   *
-   * @see FtpServerFragment#changeFTPServerPath(String)
-   * @see FolderChooserDialog
-   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
-   * @param dialog
-   * @param folder selected folder
-   */
-  @Override
-  public void onFolderSelection(@NonNull FolderChooserDialog dialog, @NonNull File folder) {
-    switch (dialog.getTag()) {
-      case FtpServerFragment.TAG:
-        FtpServerFragment ftpServerFragment = (FtpServerFragment) getFragmentAtFrame();
-        if (folder.exists() && folder.isDirectory()) {
-          ftpServerFragment.changeFTPServerPath(folder.getPath());
-          Toast.makeText(this, R.string.ftp_path_change_success, Toast.LENGTH_SHORT).show();
-        } else {
-          // try to get parent
-          File pathParentFile = new File(folder.getParent());
-          if (pathParentFile.exists() && pathParentFile.isDirectory()) {
-
-            ftpServerFragment.changeFTPServerPath(pathParentFile.getPath());
-            Toast.makeText(this, R.string.ftp_path_change_success, Toast.LENGTH_SHORT).show();
-          } else {
-            // don't have access, print error
-            Toast.makeText(this, R.string.ftp_path_change_error_invalid, Toast.LENGTH_SHORT).show();
-          }
-        }
-        dialog.dismiss();
-        break;
-      default:
-        dialog.dismiss();
-        break;
-    }
-  }
-
-  /**
-   * Do nothing other than dismissing the folder selection dialog.
-   *
-   * @see com.afollestad.materialdialogs.folderselector.FolderChooserDialog.FolderCallback
-   * @param dialog
-   */
-  @Override
-  public void onFolderChooserDismissed(@NonNull FolderChooserDialog dialog) {
-    dialog.dismiss();
   }
 
   private void executeWithMainFragment(@NonNull Function<MainFragment, Void> lambda) {

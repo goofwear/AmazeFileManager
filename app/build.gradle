@@ -25,7 +25,7 @@ android {
 
     defaultConfig {
         applicationId "com.amaze.filemanager"
-        minSdkVersion 14
+        minSdkVersion 16
         targetSdkVersion 29
         versionCode 93
         versionName "3.6.0"
@@ -122,6 +122,7 @@ ext {
     androidBillingVersion = "2.1.0"
     junrarVersion = "7.4.0"
     zip4jVersion = "2.6.4"
+    materialDialogsVersion = "3.3.0"
 }
 
 dependencies {
@@ -175,8 +176,11 @@ dependencies {
 
     implementation "com.github.junrar:junrar:$junrarVersion"
 
-    implementation 'com.afollestad.material-dialogs:core:0.9.6.0'
-    implementation 'com.afollestad.material-dialogs:commons:0.9.6.0'
+    implementation "com.afollestad.material-dialogs:core:$materialDialogsVersion"
+    implementation "com.afollestad.material-dialogs:input:$materialDialogsVersion"
+    implementation "com.afollestad.material-dialogs:files:$materialDialogsVersion"
+    implementation "com.afollestad.material-dialogs:color:$materialDialogsVersion"
+    implementation "com.afollestad.material-dialogs:bottomsheets:$materialDialogsVersion"
 
     // https://mvnrepository.com/artifact/org.apache.mina/mina-core
 

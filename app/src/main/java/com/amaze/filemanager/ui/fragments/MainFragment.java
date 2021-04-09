@@ -36,6 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.afollestad.materialdialogs.customview.DialogCustomViewExtKt;
 import com.amaze.filemanager.R;
 import com.amaze.filemanager.adapters.RecyclerAdapter;
 import com.amaze.filemanager.adapters.data.LayoutElementParcelable;
@@ -1191,8 +1192,10 @@ public class MainFragment extends Fragment implements BottomBarButtonPath {
             getResources().getString(R.string.save),
             null,
             getResources().getString(R.string.cancel),
-            (dialog, which) -> {
-              EditText textfield = dialog.getCustomView().findViewById(R.id.singleedittext_input);
+            (dialog) -> {
+              EditText textfield =
+                  DialogCustomViewExtKt.getCustomView(dialog)
+                      .findViewById(R.id.singleedittext_input);
               String name1 = textfield.getText().toString();
 
               getMainActivity()
@@ -1207,6 +1210,7 @@ public class MainFragment extends Fragment implements BottomBarButtonPath {
                           .toString(),
                       getActivity(),
                       getMainActivity().isRootExplorer());
+              return null;
             },
             (text) -> {
               boolean isValidFilename = FileUtil.isValidFilename(text);
@@ -1225,7 +1229,8 @@ public class MainFragment extends Fragment implements BottomBarButtonPath {
     // place cursor at the starting of edit text by posting a runnable to edit text
     // this is done because in case android has not populated the edit text layouts yet, it'll
     // reset calls to selection if not posted in message queue
-    EditText textfield = renameDialog.getCustomView().findViewById(R.id.singleedittext_input);
+    EditText textfield =
+        DialogCustomViewExtKt.getCustomView(renameDialog).findViewById(R.id.singleedittext_input);
     textfield.post(
         () -> {
           if (!f.isDirectory()) {
