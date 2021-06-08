@@ -25,19 +25,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.drawable.ColorDrawable
 import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Build
-import android.os.Build.VERSION_CODES.LOLLIPOP
-import android.os.Build.VERSION_CODES.M
+import android.os.Build.VERSION_CODES.*
 import android.os.Bundle
 import android.os.Environment
+import android.os.Process
+import android.provider.DocumentsContract
+import android.provider.DocumentsContract.EXTRA_INITIAL_URI
 import android.provider.Settings
 import android.text.InputType
 import android.text.Spanned
 import android.view.*
 import android.widget.*
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.text.HtmlCompat
@@ -50,6 +54,8 @@ import com.afollestad.materialdialogs.folderselector.FolderChooserDialog
 import com.amaze.filemanager.R
 import com.amaze.filemanager.application.AppConfig
 import com.amaze.filemanager.asynchronous.services.ftp.FtpService
+import com.amaze.filemanager.asynchronous.services.ftp.FtpService.Companion.DEFAULT_PATH
+import com.amaze.filemanager.asynchronous.services.ftp.FtpService.Companion.KEY_PREFERENCE_PATH
 import com.amaze.filemanager.asynchronous.services.ftp.FtpService.Companion.getLocalInetAddress
 import com.amaze.filemanager.asynchronous.services.ftp.FtpService.Companion.isConnectedToLocalNetwork
 import com.amaze.filemanager.asynchronous.services.ftp.FtpService.Companion.isConnectedToWifi
@@ -101,21 +107,16 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
 
     private val mainActivity: MainActivity get() = requireActivity() as MainActivity
 
-    @Suppress("LabeledExpression")
-    private val activityResultHandler = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (it.resultCode == RESULT_OK && Build.VERSION.SDK_INT >= LOLLIPOP) {
-            val directoryUri = it.data?.data ?: return@registerForActivityResult
-            requireContext().contentResolver.takePersistableUriPermission(
-                directoryUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                    or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-            changeFTPServerPath(directoryUri.toString())
-            updatePathText()
-        }
+    private val activityResultHandlerOnFtpServerPathUpdate = createOpenDocumentTreeIntentCallback {
+        directoryUri ->
+        changeFTPServerPath(directoryUri.toString())
+        updatePathText()
     }
+
+    private val activityResultHandlerOnFtpServerPathGrantedSafAccess =
+        createOpenDocumentTreeIntentCallback {
+            doStartServer()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -200,7 +201,9 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
             }
             R.id.ftp_path -> {
                 if (Build.VERSION.SDK_INT >= M) {
-                    activityResultHandler.launch(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
+                    activityResultHandlerOnFtpServerPathUpdate.launch(
+                        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                    )
                 } else {
                     val dialogBuilder = FolderChooserDialog.Builder(requireActivity())
                     dialogBuilder
@@ -364,12 +367,77 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
         updateStatus()
     }
 
+    private fun createOpenDocumentTreeIntentCallback(callback: (directoryUri: Uri) -> Unit):
+        ActivityResultLauncher<Intent> {
+            return registerForActivityResult(
+                ActivityResultContracts.StartActivityForResult()
+            ) {
+                if (it.resultCode == RESULT_OK && Build.VERSION.SDK_INT >= LOLLIPOP) {
+                    val directoryUri = it.data?.data ?: return@registerForActivityResult
+                    requireContext().contentResolver.takePersistableUriPermission(
+                        directoryUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                    callback.invoke(directoryUri)
+                }
+            }
+        }
+
+    /** Check URI access if  */
+    private fun checkUriAccessIfNecessary(callback: () -> Unit) {
+        if (Build.VERSION.SDK_INT >= M) {
+            val directoryUri = mainActivity.prefs.getString(KEY_PREFERENCE_PATH, DEFAULT_PATH)
+            Uri.parse(directoryUri).run {
+                if (requireContext().checkUriPermission(
+                        this, Process.myPid(), Process.myUid(),
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            or Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    ) == PackageManager.PERMISSION_DENIED
+                ) {
+                    mainActivity.accent.run {
+                        MaterialDialog.Builder(mainActivity)
+                            .content(R.string.ftp_prompt_accept_first_start_saf_access)
+                            .widgetColor(accentColor)
+                            .theme(mainActivity.appTheme.materialDialogTheme)
+                            .title(R.string.ftp_prompt_accept_first_start_saf_access_title)
+                            .positiveText(R.string.ok)
+                            .positiveColor(accentColor)
+                            .negativeText(R.string.cancel)
+                            .negativeColor(accentColor)
+                            .onPositive { dialog, _ ->
+                                activityResultHandlerOnFtpServerPathGrantedSafAccess.launch(
+                                    Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).also {
+                                        if (Build.VERSION.SDK_INT >= O &&
+                                            directoryUri.equals(DEFAULT_PATH)
+                                        ) {
+                                            it.putExtra(
+                                                EXTRA_INITIAL_URI,
+                                                DocumentsContract.buildDocumentUri(
+                                                    "com.android.externalstorage.documents",
+                                                    "primary"
+                                                )
+                                            )
+                                        }
+                                    }
+                                )
+                                dialog.dismiss()
+                            }.build().show()
+                    }
+                } else {
+                    callback.invoke()
+                }
+            }
+        } else {
+            callback.invoke()
+        }
+    }
+
     /** Sends a broadcast to start ftp server  */
     private fun startServer() {
-        requireContext().sendBroadcast(
-            Intent(FtpService.ACTION_START_FTPSERVER)
-                .setPackage(requireContext().packageName)
-        )
+        checkUriAccessIfNecessary {
+            doStartServer()
+        }
     }
 
     /** Sends a broadcast to stop ftp server  */
@@ -379,6 +447,11 @@ class FtpServerFragment : Fragment(R.layout.fragment_ftp) {
                 .setPackage(requireContext().packageName)
         )
     }
+
+    private fun doStartServer() = requireContext().sendBroadcast(
+        Intent(FtpService.ACTION_START_FTPSERVER)
+            .setPackage(requireContext().packageName)
+    )
 
     override fun onResume() {
         super.onResume()
